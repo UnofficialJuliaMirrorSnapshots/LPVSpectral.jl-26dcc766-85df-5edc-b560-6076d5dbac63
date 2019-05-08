@@ -4,30 +4,18 @@ function meshgrid(a,b)
     grid_a, grid_b
 end
 
-@userplot Periodogram
 
-@recipe function plot_periodogram(p::Periodogram; Fs=1)
+@recipe function plot_periodogram(p::DSP.Periodograms.TFR)
     seriestype := :spectrum
     title --> "Periodogram"
-    # yscale --> :log10
-    # xguide --> "Frequency / [\$F_s\$]"
-    if length(p.args) > 1
-        x = p.args[1]
-        y = p.args[2]
-    else
-        y = p.args[1]
-        x = linspace(-Fs/2,Fs/2,length(y))
-    end
-    delete!(plotattributes,:Fs)
-    y = abs.(fft(y))
-    (x,y)
+    p.freq, p.power
 end
 
 
-@recipe function plot_spectrum(::Type{Val{:spectrum}}, plt::Plots.Plot)
+@recipe function plot_spectrum(::Type{Val{:spectrum}}, plt::AbstractPlot)
     title --> "Spectrum"
     yscale --> :log10
-    xguide --> "Frequency / [\$F_s\$]"
+    xguide --> "Frequency"
     seriestype := :path
 end
 
@@ -42,7 +30,7 @@ end
     px = angle.(x)
     K  = basis_activation_func(V,Nv,normalize,coulomb)
 
-    fg,vg = meshgrid(w,linspace(minimum(V),maximum(V),Nf == 100 ? 101 : 100)) # to guarantee that the broadcast below always works
+    fg,vg = meshgrid(w,LinRange(minimum(V),maximum(V),Nf == 100 ? 101 : 100)) # to guarantee that the broadcast below always works
     F  = zeros(size(fg))
     FB = zeros(size(fg)...,nMC)
     P  = zeros(size(fg))
@@ -56,35 +44,35 @@ end
     for j = 1:size(fg,1)
         for i = 1:size(vg,2)
             ϕ = K(vg[j,i]) # Kernel activation vector
-            F[j,i] = abs(vecdot(x[j,:],ϕ))
-            P[j,i] = angle(vecdot(x[j,:],ϕ))
+            F[j,i] = abs(dot(x[j,:],ϕ))
+            P[j,i] = angle(dot(x[j,:],ϕ))
             if bounds
                 for iMC = 1:nMC
                     zii = zi[iMC,j:Nf:end][:]
-                    FB[j,i,iMC] = abs(vecdot(zii,ϕ))
+                    FB[j,i,iMC] = abs(dot(zii,ϕ))
                     if phase
-                        PB[j,i,iMC] = angle(vecdot(zii,ϕ))
+                        PB[j,i,iMC] = angle(dot(zii,ϕ))
                     end
                 end
             end
         end
     end
-    FB = sort(FB,3)
+    FB = sort(FB,dims=3)
     lim = 10
     FBl = FB[:,:,nMC ÷ lim]
     FBu = FB[:,:,nMC - (nMC ÷ lim)]
-    FBm = squeeze(mean(FB,3),3)
-    PB = sort(PB,3)
+    FBm = dropdims(mean(FB,dims=3),dims=3)
+    PB = sort(PB,dims=3)
     PBl = PB[:,:,nMC ÷ lim]
     PBu = PB[:,:,nMC - (nMC ÷ lim)]
-    PBm = squeeze(mean(PB,3),3)
+    PBm = dropdims(mean(PB,dims=3),dims=3)
 
     nd = normdim == :freq ? 1 : 2
     normalizer = 1.
     if normalization == :sum
-        normalizer =   sum(F, nd)/size(F,nd)
+        normalizer =   sum(F, dims=nd)/size(F,nd)
     elseif normalization == :max
-        normalizer =   maximum(F, nd)
+        normalizer =   maximum(F, dims=nd)
     end
     F = F./normalizer
     delete!(plotattributes, :normalization)
@@ -108,7 +96,7 @@ end
             yguide --> "\$A(v)\$"
             title --> "Estimated functional dependece \$A(v)\$\n"# Normalization: $normalization, along dim $normdim")#, zlabel="\$f(v)\$")
             @series begin
-                label --> "\$\\omega = $(round(fg[i,1]/pi,1))\\pi\$"
+                label --> "\$\\omega = $(round(fg[i,1]/pi,sigdigits=1))\\pi\$"
                 m = mcmean && bounds ? FBm[i,:] : F[i,:]
                 if bounds
                     # fillrange := FBu[i,:]
@@ -146,7 +134,7 @@ end
 
 
 @recipe function plot_spectralext(::Type{Val{:spectralext}}, x, y, z)
-    xi,w = y.x,y.w
+    xi,w = y.x, y.w
     title --> "Spectrum"
     Nf = length(w)
     x = reshape_params(xi,Nf)
